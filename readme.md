@@ -15,6 +15,7 @@ We refer the codes of Vector Quantized Varitional Auto-encoder (VQVAE) model fro
 Please check our main.py file as a simple tutorial.
 
 # Data availability
+The download link for benchmark datasets is [here](https://drive.google.com/drive/folders/1Skafk47Gcmu4eZfCy-oNfUJEyNi_mn3S?usp=sharing).
 
 # Reference
 If you intend to cite our work, please use this link:
