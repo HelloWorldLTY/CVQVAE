@@ -32,6 +32,7 @@ from sklearn.decomposition import TruncatedSVD
 import scipy
 
 # lsi for scATAC-seq data
+# reference: https://github.com/gao-lab/GLUE
 def lsi_transform(adata: sc.AnnData, n_comp=50, n_peaks=30000):
     top_idx = set(np.argsort(adata.X.sum(axis=0).A1)[-n_peaks:])
     features = adata.var_names.tolist()
@@ -62,6 +63,7 @@ def pca_transform(adata: sc.AnnData, features):
     adata.obsm['X_pca'] = adata_new.obsm['X_pca']
     return adata
 
+#Reference: https://github.com/xiaohu2015/nngen
 class ExponentialMovingAverage(nn.Module):
     """Maintains an exponential moving average for a value.
     
@@ -117,7 +119,7 @@ class VectorQuantizerEMA(nn.Module):
         
         # initialize embeddings as buffers
         embeddings = torch.empty(self.num_embeddings, self.embedding_dim)
-        nn.init.xavier_uniform_(embeddings)
+        nn.init.kaiming_uniform_(embeddings)
         self.register_buffer("embeddings", embeddings)
         self.ema_dw = ExponentialMovingAverage(self.embeddings, decay)
         
@@ -169,7 +171,6 @@ class VectorQuantizerEMA(nn.Module):
         """Returns embedding tensor for a batch of indices."""
         return F.embedding(encoding_indices, self.embeddings)      
         
-    
 class Encoder(nn.Module):
     """Encoder of VQ-VAE"""
     
@@ -179,20 +180,41 @@ class Encoder(nn.Module):
         self.latent_dim = latent_dim
         
         self.enc = nn.Sequential(
-                    nn.Linear(2504, 1024),
+                    nn.Linear(self.in_dim, 1024),
                     nn.BatchNorm1d(1024),
-                    Mish(),
+                    nn.ELU(),
+        )
+
+        self.enc1 = nn.Sequential(                    
                     nn.Linear(1024, 512),
                     nn.BatchNorm1d(512),
-                    Mish(),
-                    nn.Linear(512, 256),
-                    nn.BatchNorm1d(256),
-                    Mish(),
-                    nn.Linear(256, latent_dim),
+                    nn.ELU(),
+            
         )
         
+
+        self.enc2 = nn.Sequential(                    
+                    nn.Linear(512, 256),
+                    nn.BatchNorm1d(256),
+                    nn.ELU(),
+            
+        )
+        self.enc3 = nn.Linear(256, self.latent_dim)
+        self.link1 = nn.Linear(1024, 256)
+        self.link2 = nn.Linear(512, self.latent_dim)
+
+        self.res = nn.Linear(self.in_dim,self.latent_dim)
+
+        self.Efunc = nn.ELU()
+        
+        
     def forward(self, x):
-        return self.enc(x)
+        x1 = self.enc(x)
+        x2 = self.enc1(x1)
+        x3 = self.enc2(x2)
+        x4 = x3+self.link1(x1)
+        x5 = self.enc3(x4) + self.link2(x2)
+        return x5+self.res(x)
     
 
 class Decoder(nn.Module):
@@ -203,22 +225,42 @@ class Decoder(nn.Module):
         self.out_dim = out_dim
         self.latent_dim = latent_dim
         
-        self.dec= nn.Sequential(
+        self.dec = nn.Sequential(
                     nn.Linear(latent_dim, 256),
                     nn.BatchNorm1d(256),
-                    Mish(),
+                    nn.ELU(),
+        )
+
+        self.dec1 = nn.Sequential(                    
                     nn.Linear(256, 512),
                     nn.BatchNorm1d(512),
-                    Mish(),
-                    nn.Linear(512, 1024),
-                    nn.BatchNorm1d(1024),
-                    Mish(),
-                    nn.Linear(1024, 2504),
+                    nn.ELU(),
+            
         )
         
+
+        self.dec2 = nn.Sequential(                    
+                    nn.Linear(512, 1024),
+                    nn.BatchNorm1d(1024),
+                    nn.ELU(),
+            
+        )
+        self.dec3 = nn.Linear(1024, self.out_dim)
+        self.link1 = nn.Linear(256, 1024)
+
+        self.link2 = nn.Linear(512, self.out_dim)
+
+        self.res = nn.Linear(latent_dim, self.out_dim)
+        self.Efunc = nn.ELU()
+
+
     def forward(self, x):
-        return self.dec(x)
-        
+        x1 = self.dec(x)
+        x2 = self.dec1(x1)
+        x3 = self.dec2(x2)
+        x4 = x3+self.link1(x1)
+        x5 = self.dec3(x4)+self.link2(x2)
+        return x5+self.res(x)
         
         
 class VQVAE_EMA(nn.Module):
@@ -245,10 +287,10 @@ class VQVAE_EMA(nn.Module):
         
     def forward(self, x, y):
         z = self.encoder_gexatac(x)
-        if not self.training:
-            e = self.vq_layer(z)
-            x_recon = self.decoder(e)
-            return e, x_recon
+        # if not self.training:
+        #     e = self.vq_layer(z)
+        #     x_recon = self.decoder(e)
+        #     return e, x_recon
         
         e, e_q_loss = self.vq_layer_gexatac(z)
         x_recon = self.decoder_gexatac(e)
@@ -256,20 +298,25 @@ class VQVAE_EMA(nn.Module):
         recon_loss = F.mse_loss(x_recon, y) / self.data_variance1 #atac
         
         z1 = self.encoder_atacgex(y)
-        if not self.training:
-            e = self.vq_layer(z)
-            x_recon = self.decoder(e)
-            return e, x_recon
+        # if not self.training:
+        #     e = self.vq_layer(z)
+        #     x_recon = self.decoder(e)
+        #     return e, x_recon
         
         e1, e_q_loss1 = self.vq_layer_atacgex(z1)
         y_recon = self.decoder_gexatac(e1)
     
         recon_loss1 = F.mse_loss(y_recon, x) / self.data_variance2 #gex       
-        
-#         print(F.mse_loss(z,z1))
-#         print(e_q_loss + recon_loss)
         return e_q_loss + recon_loss, e_q_loss1+ recon_loss1, F.mse_loss(z,z1), e_q_loss + recon_loss +e_q_loss1+ recon_loss1 + self.lambda_z*F.mse_loss(z,z1)
 
+def init_weight_function(network):
+  for m in network.encoder_gexatac.enc:
+      if isinstance(m,nn.Linear):
+        nn.init.kaiming_uniform_(m.weight, a=np.sqrt(5))
+
+  for m in network.encoder_atacgex.enc:
+      if isinstance(m,nn.Linear):
+        nn.init.kaiming_uniform_(m.weight, a=np.sqrt(5))
 
 # data loading process
 adata_gex = sc.read_h5ad("/gpfs/ysm/home/tl688/scrnahpc/multiome_gex_processed_training.h5ad")
@@ -282,14 +329,16 @@ train_data_sample = adata_atac.obsm['X_lsi'] #atac
 train_label_sample = adata_gex.obsm['X_pca'] #gex
 
 epochs = 200
-print_freq = 500
-embedding_dim = 16
-num_embeddings = 1024
 lr=1e-4
 
 train_loader = data_utils.TensorDataset(torch.FloatTensor(train_data_sample),torch.FloatTensor(train_label_sample))
 
-dataloader = DataLoader(train_loader, batch_size=256)
+dataloader = DataLoader(train_loader, batch_size=1024)
+
+
+embedding_dim = 16
+input_dim= 2500
+num_embeddings = 2048
 
 train_images = []
 for images, labels in dataloader:
@@ -309,11 +358,15 @@ l1_l = []
 l2_l = []
 cros_l = []
 
-model = VQVAE_EMA(1, embedding_dim, num_embeddings, train_data_variance1, train_data_variance2)
+model = VQVAE_EMA(input_dim, embedding_dim, num_embeddings, train_data_variance1, train_data_variance2)
+init_weight_function(model)
 model = model.cuda()
 
-optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+cosine_lr = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 40)
 
+
+print_freq = 20
 # training process
 set_seed()
 torch.cuda.empty_cache()
@@ -332,6 +385,7 @@ for epoch in range(epochs):
     l1_l.append(l1)
     l2_l.append(l2)
     cros_l.append(cros)
+    cosine_lr.step()
 
 
 # Save model

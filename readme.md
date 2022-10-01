@@ -1,5 +1,5 @@
 # CVQVAE
-Codes for paper: CVQVAE: A deep learning based method for multi-omics single cell data integration
+Codes for paper: CVQVAE: A REPRESENTATION LEARNING METHOD FOR MULTI-OMICS SINGLE CELL DATA INTEGRATION
 
 
 # Installation
@@ -19,3 +19,4 @@ The download link for benchmark datasets is [here](https://drive.google.com/driv
 
 # Reference
 If you intend to cite our work, please use this link:
+(To be continued..)

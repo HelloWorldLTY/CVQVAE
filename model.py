@@ -170,20 +170,41 @@ class Encoder(nn.Module):
         self.latent_dim = latent_dim
         
         self.enc = nn.Sequential(
-                    nn.Linear(2504, 1024),
+                    nn.Linear(self.in_dim, 1024),
                     nn.BatchNorm1d(1024),
-                    Mish(),
+                    nn.ELU(),
+        )
+
+        self.enc1 = nn.Sequential(                    
                     nn.Linear(1024, 512),
                     nn.BatchNorm1d(512),
-                    Mish(),
-                    nn.Linear(512, 256),
-                    nn.BatchNorm1d(256),
-                    Mish(),
-                    nn.Linear(256, latent_dim),
+                    nn.ELU(),
+            
         )
         
+
+        self.enc2 = nn.Sequential(                    
+                    nn.Linear(512, 256),
+                    nn.BatchNorm1d(256),
+                    nn.ELU(),
+            
+        )
+        self.enc3 = nn.Linear(256, self.latent_dim)
+        self.link1 = nn.Linear(1024, 256)
+        self.link2 = nn.Linear(512, self.latent_dim)
+
+        self.res = nn.Linear(self.in_dim,self.latent_dim)
+
+        self.Efunc = nn.ELU()
+        
+        
     def forward(self, x):
-        return self.enc(x)
+        x1 = self.enc(x)
+        x2 = self.enc1(x1)
+        x3 = self.enc2(x2)
+        x4 = x3+self.link1(x1)
+        x5 = self.enc3(x4) + self.link2(x2)
+        return x5+self.res(x)
     
 
 class Decoder(nn.Module):
@@ -194,21 +215,42 @@ class Decoder(nn.Module):
         self.out_dim = out_dim
         self.latent_dim = latent_dim
         
-        self.dec= nn.Sequential(
+        self.dec = nn.Sequential(
                     nn.Linear(latent_dim, 256),
                     nn.BatchNorm1d(256),
-                    Mish(),
+                    nn.ELU(),
+        )
+
+        self.dec1 = nn.Sequential(                    
                     nn.Linear(256, 512),
                     nn.BatchNorm1d(512),
-                    Mish(),
-                    nn.Linear(512, 1024),
-                    nn.BatchNorm1d(1024),
-                    Mish(),
-                    nn.Linear(1024, 2504),
+                    nn.ELU(),
+            
         )
         
+
+        self.dec2 = nn.Sequential(                    
+                    nn.Linear(512, 1024),
+                    nn.BatchNorm1d(1024),
+                    nn.ELU(),
+            
+        )
+        self.dec3 = nn.Linear(1024, self.out_dim)
+        self.link1 = nn.Linear(256, 1024)
+
+        self.link2 = nn.Linear(512, self.out_dim)
+
+        self.res = nn.Linear(latent_dim, self.out_dim)
+        self.Efunc = nn.ELU()
+
+
     def forward(self, x):
-        return self.dec(x)
+        x1 = self.dec(x)
+        x2 = self.dec1(x1)
+        x3 = self.dec2(x2)
+        x4 = x3+self.link1(x1)
+        x5 = self.dec3(x4)+self.link2(x2)
+        return x5+self.res(x)
         
         
 
@@ -258,8 +300,7 @@ class VQVAE_EMA(nn.Module):
     
         recon_loss1 = F.mse_loss(y_recon, x) / self.data_variance2 #gex       
         
-#         print(F.mse_loss(z,z1))
-#         print(e_q_loss + recon_loss)
+
         return e_q_loss + recon_loss, e_q_loss1+ recon_loss1, F.mse_loss(z,z1), e_q_loss + recon_loss +e_q_loss1+ recon_loss1 + self.lambda_z*F.mse_loss(z,z1)
 
 # average mode
@@ -311,8 +352,7 @@ class VQVAE_EMA_avg(nn.Module):
     
         recon_loss1 = F.mse_loss(y_recon, x) / self.data_variance2 #gex       
         
-#         print(F.mse_loss(z,z1))
-#         print(e_q_loss + recon_loss)
+
         return e_q_loss + recon_loss, e_q_loss1+ recon_loss1, F.mse_loss(z,z1), e_q_loss + recon_loss +e_q_loss1+ recon_loss1 + self.lambda_z*F.mse_loss(z,z1)
 
 
@@ -367,6 +407,5 @@ class VQVAE_EMA_lin(nn.Module):
     
         recon_loss1 = F.mse_loss(y_recon, x) / self.data_variance2 #gex       
         
-#         print(F.mse_loss(z,z1))
-#         print(e_q_loss + recon_loss)
+
         return e_q_loss + recon_loss, e_q_loss1+ recon_loss1, F.mse_loss(z,z1), e_q_loss + recon_loss +e_q_loss1+ recon_loss1 + self.lambda_z*F.mse_loss(z,z1)
