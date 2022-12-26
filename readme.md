@@ -20,4 +20,4 @@ The download link for benchmark datasets is [here](https://drive.google.com/driv
 # Reference
 If you intend to cite our work, please use this link:
 
-Liu Tianyu, Greenberg Grant, Shomorony Ilan. CVQVAE: A representation learning method for multi-omics single cell data integration, 17th Machine Learning in Computational Biology meeting (MLCB 2022).
+Liu, Tianyu, Grant Greenberg, and Ilan Shomorony. "CVQVAE: A representation learning based method for multi-omics single cell data integration." Machine Learning in Computational Biology. PMLR, 2022.
